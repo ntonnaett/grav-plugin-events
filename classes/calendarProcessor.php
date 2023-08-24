@@ -120,7 +120,7 @@ class CalendarProcessor
 			$monthParam = date('m');
 		}
 
-		$monthYearString = "${yearParam}-${monthParam}-01";
+		$monthYearString = "{$yearParam}-{$monthParam}-01";
 		$carbonMonthYear = Carbon::parse($monthYearString);
 
 		// add vars for use in the calendar twig var
