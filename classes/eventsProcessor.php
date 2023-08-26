@@ -15,7 +15,7 @@
 namespace Events;
 
 // import classes
-require_once __DIR__.'/../vendor/autoload.php';
+require_once __DIR__ . '/../vendor/autoload.php';
 
 // tools to use
 use Carbon\Carbon;
@@ -125,27 +125,36 @@ class EventsProcessor
 		 * this adds carbon _event frontmatter data for processing repeating
 		 * dates and etc.
 		 */
-		$this->preprocessEventPages( $collection );
+		$this->preprocessEventPages($collection);
 
 		/**
 		 * STEP 2: Process Repeating Events
 		 *
 		 * Add repeating events to the collection via [MTWRFSU]
 		 */
-		$initial = $this->processRepeatingEvents( $collection );
+		$initial = $this->processRepeatingEvents($collection);
 
 		/**
 		 * STEP 3: Process Reoccuring Events
 		 *
 		 * Add reoccuring events to the collection [daily, weekly, monthly, yearly].
 		 */
-		$reoccuring = $this->processReoccuringEvents( $initial );
+		$reoccuring = $this->processReoccuringEvents($initial);
+
+		/**
+		 * STEP 3.5: Process Multi-Date Events
+		 * 
+		 * Add multi date events to the collection [dates:]
+		 */
+		$multidate = $this->processMultiDateEvents($collection);
+
 
 		/**
 		 * STEP 4: Add virtual events pages to Grav pages
 		 */
-		$initial = $this->addVirtualEventsPages( $initial );
-		$reoccuring = $this->addVirtualEventsPages( $reoccuring );
+		$initial = $this->addVirtualEventsPages($initial);
+		$reoccuring = $this->addVirtualEventsPages($reoccuring);
+		$multidate = $this->addVirtualEventsPages($multidate);
 
 		// merge the collection back into grav pages
 		return $this->pages;
@@ -162,13 +171,13 @@ class EventsProcessor
 	 * @since  1.0.15 Major Refactor
 	 * @return object $events Grav Collection
 	 */
-	private function preprocessEventPages( $collection )
+	private function preprocessEventPages($collection)
 	{
-		foreach ( $collection as $page ) {
+		foreach ($collection as $page) {
 
 			// get header information
 			$header = $page->header();
-			if ( ! isset( $header->event['start'] ) ) {
+			if (!isset($header->event['start'])) {
 				return;
 			}
 
@@ -177,25 +186,24 @@ class EventsProcessor
 
 			// build a carbon events object to insert into header frontmatter
 			$carbonEvent = [];
-			$carbonEvent['start'] = Carbon::parse( $event['start'] );
-			if ( isset( $event['end'] ) ) {
-				$carbonEvent['end'] = Carbon::parse( $event['end'] );
+			$carbonEvent['start'] = Carbon::parse($event['start']);
+			if (isset($event['end'])) {
+				$carbonEvent['end'] = Carbon::parse($event['end']);
 			}
 
 			// build an until date if needed
-			if ( isset( $event['until'] ) ) {
-				$carbonEvent['until'] = Carbon::parse( $event['until'] );
-			}
-			elseif ( isset( $event['freq'] ) && ! isset( $event['until'] ) ) {
+			if (isset($event['until'])) {
+				$carbonEvent['until'] = Carbon::parse($event['until']);
+			} elseif (isset($event['freq']) && !isset($event['until'])) {
 				// get a Grav instance
 				$grav = \Grav\Common\Grav::instance();
 
-				$carbonEvent['until'] = Carbon::parse( $event['start'] )->addMonths( $grav['config']->get('plugins.events.display_months_out') );
-				$header->event['until'] = Carbon::parse( $event['start'] )->addMonths( $grav['config']->get('plugins.events.display_months_out') )->format('m/d/Y g:ia');
+				$carbonEvent['until'] = Carbon::parse($event['start'])->addMonths($grav['config']->get('plugins.events.display_months_out'));
+				$header->event['until'] = Carbon::parse($event['start'])->addMonths($grav['config']->get('plugins.events.display_months_out'))->format('m/d/Y g:ia');
 			}
 
 			//setup event status
-			if( isset($event['status']) ) {
+			if (isset($event['status'])) {
 				$header->event['status'] = $event['status'];
 			}
 
@@ -211,21 +219,21 @@ class EventsProcessor
 			$eventTaxonomy['type'] = 'event';
 
 			// get freq taxonomy
-			if ( isset($event['freq']) ) {
+			if (isset($event['freq'])) {
 				$eventTaxonomy['event_freq'] = $event['freq'];
 			}
 
 			// get repeat taxonomy
-			if ( isset($event['repeat']) ) {
+			if (isset($event['repeat'])) {
 				$rules = str_split($event['repeat']);
 				$eventTaxonomy['event_repeat'] = [];
-				foreach($rules as $rule) {
+				foreach ($rules as $rule) {
 					array_push($eventTaxonomy['event_repeat'], $rule);
 				}
 			}
 
 			// get location taxonomy
-			if ( isset($event['location']) ) {
+			if (isset($event['location'])) {
 				$eventTaxonomy['event_location'] = $event['location'];
 			}
 
@@ -234,9 +242,9 @@ class EventsProcessor
 			$newTaxonomy = array_merge($taxonomy, $eventTaxonomy);
 
 			// add categories to $eventCategories
-			if ( isset( $newTaxonomy['category'] ) ) {
-				foreach ( $newTaxonomy['category'] as $category ) {
-					if ( ! in_array($category, $this->eventCategories) ) {
+			if (isset($newTaxonomy['category'])) {
+				foreach ($newTaxonomy['category'] as $category) {
+					if (!in_array($category, $this->eventCategories)) {
 						array_push($this->eventCategories, $category);
 					}
 				}
@@ -267,37 +275,37 @@ class EventsProcessor
 	 * @since  1.0.15 Major Refactor
 	 * @return object Grav collection of the initial virtual pages
 	 */
-	private function processRepeatingEvents( $collection )
+	private function processRepeatingEvents($collection)
 	{
 		$pages = array();
 
 		// carbon calc rules
-		$carbonRules[Carbon::MONDAY   ] = 'M';
-		$carbonRules[Carbon::TUESDAY  ] = 'T';
+		$carbonRules[Carbon::MONDAY] = 'M';
+		$carbonRules[Carbon::TUESDAY] = 'T';
 		$carbonRules[Carbon::WEDNESDAY] = 'W';
-		$carbonRules[Carbon::THURSDAY ] = 'R';
-		$carbonRules[Carbon::FRIDAY   ] = 'F';
-		$carbonRules[Carbon::SATURDAY ] = 'S';
-		$carbonRules[Carbon::SUNDAY   ] = 'U';
+		$carbonRules[Carbon::THURSDAY] = 'R';
+		$carbonRules[Carbon::FRIDAY] = 'F';
+		$carbonRules[Carbon::SATURDAY] = 'S';
+		$carbonRules[Carbon::SUNDAY] = 'U';
 
 		// look for events with repeat rules
-		foreach ( $collection as $page ) {
+		foreach ($collection as $page) {
 			$header = $page->header();
 
-			if ( isset( $header->event['repeat'] ) && isset( $header->event['until'] ) ) {
-				$rules = str_split( $header->event['repeat'] );
-				$until = Carbon::parse( $header->event['until'] );
+			if (isset($header->event['repeat']) && isset($header->event['until'])) {
+				$rules = str_split($header->event['repeat']);
+				$until = Carbon::parse($header->event['until']);
 
 				// multiple repeating events
-				if ( count( $rules ) > 1 ) {
-					for ( $i=0; $i<7; $i++) {
+				if (count($rules) > 1) {
+					for ($i = 0; $i < 7; $i++) {
 						$dates['start'] = $header->_event['start']->copy()->addDays($i);
 						$dates['end'] = $header->_event['end']->copy()->addDays($i);
 						$rule = $carbonRules[$dates['start']->dayOfWeek];
 
-						if ( $dates['start'] <= $until ) {
+						if ($dates['start'] <= $until) {
 							// clone the page and add the new dates
-							$pages[] = $this->clonePage( $page, $dates, $rule );
+							$pages[] = $this->clonePage($page, $dates, $rule);
 						}
 					}
 				}
@@ -322,38 +330,80 @@ class EventsProcessor
 	 * @since  1.0.15 Major Refactor
 	 * @return object Grav collection of the reoccuring virtual pages
 	 */
-	private function processReoccuringEvents( $collection )
+	private function processReoccuringEvents($collection)
 	{
 		$pages = array();
 
-		foreach ( $collection as $page ) {
+		foreach ($collection as $page) {
 			$header = $page->header();
 
-			if ( isset( $header->event['freq'] ) && isset( $header->event['until'] ) ) {
+			if (isset($header->event['freq']) && isset($header->event['until'])) {
 				// get some params to calculate
-				$freq  = $header->event['freq'];
-				$until = Carbon::parse( $header->event['until'] );
-				$start = Carbon::parse( $header->event['start'] );
-				$end   = Carbon::parse( $header->event['end'] );
+				$freq = $header->event['freq'];
+				$until = Carbon::parse($header->event['until']);
+				$start = Carbon::parse($header->event['start']);
+				$end = Carbon::parse($header->event['end']);
 
 				// get the iteration count
-				$count = $this->calculateCount( $freq, $until, $start );
+				$count = $this->calculateCount($freq, $until, $start);
 
 				/**
 				 * Calculate the New Dates based on the Count and Freq
 				 */
-				for ( $i=1; $i<=$count; $i++ ) {
+				for ($i = 1; $i <= $count; $i++) {
 					// get the new dates
-					$dates = $this->calculateNewDates( $freq, $i, $start, $end );
+					$dates = $this->calculateNewDates($freq, $i, $start, $end);
 					$header = $page->header();
 
 					// access the saved original for repeating MTWRFSU events
-					if ( isset( $header->_event['page'] ) ) {
+					if (isset($header->_event['page'])) {
 						$page = $header->_event['page'];
 					}
 
 					// get the new cloned event when the day matches
-					$pages[] = $this->clonePage( $page, $dates );
+					$pages[] = $this->clonePage($page, $dates);
+				}
+			}
+		}
+
+		return $pages;
+	}
+
+	/**
+	 * STEP 3.5: Process Multi-Date Events
+	 * 
+	 * TODO: Make sure that dates: includes all dates!!
+	 * 
+	 * For events with the dates: frontmatter (multiple dates), create a new 
+	 * page for each date. Clone everything and set the corresponding 
+	 * start and end date
+	 * 
+	 * @param  object $collection Grav collection of event pages
+	 * @return object Grav collection
+	 */
+	private function processMultiDateEvents($collection)
+	{
+		$pages = array();
+
+		foreach ($collection as $page) {
+			$header = $page->header();
+
+			// if multiple dates are not set, skip
+			if (!isset($header->event['dates'])) {
+				continue;
+			} else {
+				// get the list of multiple dates
+				$dateList = $header->event['dates'];
+				$count = count($dateList);
+
+				// convert the dates to carbon
+				for ($i = 0; $i < $count; $i++) {
+					// get the new dates
+					$dates['start'] = Carbon::parse($dateList[$i]['start']);
+					$dates['end'] = Carbon::parse($dateList[$i]['end']);
+
+					// clone the event with the start and end dates
+					$pages[] = $this->clonePage($page, $dates);
 				}
 			}
 		}
@@ -372,41 +422,43 @@ class EventsProcessor
 	 * @param  object $pages Grav Collection of first pages to be added
 	 * @return object         Grav Collection
 	 */
-	private function addVirtualEventsPages( $clones )
+	private function addVirtualEventsPages($clones)
 	{
 		$pages = array();
 
 		// carbon calc rules
-		$carbonRules[Carbon::MONDAY   ] = 'M';
-		$carbonRules[Carbon::TUESDAY  ] = 'T';
+		$carbonRules[Carbon::MONDAY] = 'M';
+		$carbonRules[Carbon::TUESDAY] = 'T';
 		$carbonRules[Carbon::WEDNESDAY] = 'W';
-		$carbonRules[Carbon::THURSDAY ] = 'R';
-		$carbonRules[Carbon::FRIDAY   ] = 'F';
-		$carbonRules[Carbon::SATURDAY ] = 'S';
-		$carbonRules[Carbon::SUNDAY   ] = 'U';
+		$carbonRules[Carbon::THURSDAY] = 'R';
+		$carbonRules[Carbon::FRIDAY] = 'F';
+		$carbonRules[Carbon::SATURDAY] = 'S';
+		$carbonRules[Carbon::SUNDAY] = 'U';
 
-		foreach ( $clones as $clone ) {
+		foreach ($clones as $clone) {
 			$header = $clone->header();
 			$add = true;
 
-			$start = Carbon::parse( $header->event['start'] );
-			$_start = Carbon::parse( $header->_event['start'] );
-			if ( $start == $_start ) {
+			$start = Carbon::parse($header->event['start']);
+			$_start = Carbon::parse($header->_event['start']);
+			if ($start == $_start) {
 				// don't add the virtual clone of the initial event
 				$add = false;
 			}
 
-			$repeat = $header->event['repeat'];
-			$dow = $carbonRules[$start->dayOfWeek];
-			if ( !str_contains( $repeat, $dow ) ) {
-				// don't add events that don't match the day of week
-				$add = false;
+			if (isset($header->event['repeat'])) {
+				$repeat = $header->event['repeat'];
+				$dow = $carbonRules[$start->dayOfWeek];
+				if (!str_contains($repeat, $dow)) {
+					// don't add events that don't match the day of week
+					$add = false;
+				}
 			}
 
-			if ( $add ) {
+			if ($add) {
 				// insert the page into grav pages
-				$this->pages->addPage( $clone );
-				$this->taxonomy->addTaxonomy( $clone, $clone->taxonomy() );
+				$this->pages->addPage($clone);
+				$this->taxonomy->addTaxonomy($clone, $clone->taxonomy());
 				$pages[] = $clone;
 			}
 		}
@@ -427,15 +479,15 @@ class EventsProcessor
 	 * unique `$page->path` and `$page->route`.
 	 *
 	 * @param  object $page  Grav Page
-	 * @param  array $dates  Carbon Dates
+	 * @param  array $dates  Carbon Dates (start, end)
 	 * @param  string $rule	 Rule for repeating events
 	 * @since  1.0.1 Initial Release
 	 * @return object        Grav Page
 	 */
-	private function clonePage( \Grav\Common\Page\Page $page, $dates, $rule = null )
+	private function clonePage(\Grav\Common\Page\Page $page, $dates, $rule = null)
 	{
 		// something went wrong in calculateNewDates, exit function
-		if ( is_null($dates['start']) || is_null($dates['end']) ) {
+		if (is_null($dates['start']) || is_null($dates['end'])) {
 			return;
 		}
 
@@ -446,12 +498,12 @@ class EventsProcessor
 		$header = clone $clone->header();
 
 		// dont add events with exception dates
-		if ( isset( $header->event['exceptions'] ) ) {
+		if (isset($header->event['exceptions'])) {
 			$exceptions = $header->event['exceptions'];
-			$date = Carbon::parse( $header->date );
-			foreach ( $exceptions as $exception ) {
-				$exception = Carbon::parse( $exception['date'] );
-				if ( $exception->isSameDay($dates['start']) ) {
+			$date = Carbon::parse($header->date);
+			foreach ($exceptions as $exception) {
+				$exception = Carbon::parse($exception['date']);
+				if ($exception->isSameDay($dates['start'])) {
 					return;
 				}
 			}
@@ -470,11 +522,11 @@ class EventsProcessor
 		// a token is needed because the key is null
 		// build a page token for lookup
 		$id = $clone->id();
-		$token = substr( md5( $id . $header->event['start'] ),0,6);
+		$token = substr(md5($id . $header->event['start']), 0, 6);
 		$header->token = $token;
 
 		// store a processing token for future repeating pages
-		if ( ! is_null( $rule ) ) {
+		if (!is_null($rule)) {
 			$header->_event['rule'] = $rule;
 			$header->_event['token'] = $token;
 			$header->_event['page'] = $page;
@@ -487,17 +539,17 @@ class EventsProcessor
 
 		// check to see if this has been tokenized already and
 		// clean it up.
-		if ( is_null($rule) && isset($header->_event['rule']) ) {
+		if (is_null($rule) && isset($header->_event['rule'])) {
 			$path = str_replace('/' . $header->_event['token'], '', $path);
 			$route = str_replace('/' . $header->_event['token'], '', $route);
 		}
 
 		// build a unique path
-		$clone->path( $path );
+		$clone->path($path);
 		// build a unique route
-		$clone->route( $route );
+		$clone->route($route);
 		// update the clone with the new header
-		$clone->header( $header );
+		$clone->header($header);
 
 		return $clone;
 	}
@@ -519,15 +571,15 @@ class EventsProcessor
 	 * @param  object $start Carbon DateTime
 	 * @return integer       Repeat Count
 	 */
-	private function calculateCount( $freq, \Carbon\Carbon $until, \Carbon\Carbon $start )
+	private function calculateCount($freq, \Carbon\Carbon $until, \Carbon\Carbon $start)
 	{
 		/**
 		 * Calculate the iteration count depending on frequency set
 		 */
-		
+
 		$count = 0;
-		
-		switch ( $freq ) {
+
+		switch ($freq) {
 			case 'daily':
 				$count = $until->diffInDays($start);
 				break;
@@ -560,16 +612,16 @@ class EventsProcessor
 	 * new dates.
 	 *
 	 * @param  string       $freq  Frequency
-	 * @param  integery     $i     Loop Counter
+	 * @param  integer      $i     Loop Counter
 	 * @param  CarbonCarbon $start DateTime
 	 * @param  CarbonCarbon $end   DateTime
 	 * @since  1.0.16
 	 * @return array               New Dates
 	 */
-	private function calculateNewDates( $freq, $i, \Carbon\Carbon $start, \Carbon\Carbon $end )
+	private function calculateNewDates($freq, $i, \Carbon\Carbon $start, \Carbon\Carbon $end)
 	{
 		// update the start and end dates of the event frontmatter
-		switch ( $freq ) {
+		switch ($freq) {
 			case 'daily':
 				$newStart = $start->copy()->addDays($i);
 				$newEnd = $end->copy()->addDays($i);
