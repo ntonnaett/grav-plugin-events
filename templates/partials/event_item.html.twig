@@ -2,7 +2,7 @@
     <header class="event-header">
     {% set image = page.media.images|first %}
     {% if image != null %}
-        {{ image.cropZoom(960,280).html }}
+        {{ image.cropZoom(960,280).html | raw }}
     {% endif %}
     </header>
 
